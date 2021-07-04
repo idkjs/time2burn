@@ -1,0 +1,13 @@
+(library
+  (name bootstrap)
+  (libraries
+    core_kernel
+    bonsai.web
+    js_of_ocaml
+    yojson
+  )
+  (preprocess (pps
+    ppx_jane
+    js_of_ocaml-ppx
+  ))
+)

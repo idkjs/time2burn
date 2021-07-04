@@ -1,0 +1,24 @@
+(executable
+  (name app)
+  (libraries
+    bootstrap
+
+    core_kernel
+    re
+    uri
+    cohttp
+    cohttp-lwt-jsoo
+    bonsai.web
+    lwt
+    js_of_ocaml
+    js_of_ocaml-lwt
+  )
+  (preprocess (pps
+    ppx_jane
+    ppx_deriving_yojson
+    ppx_pattern_bind
+    js_of_ocaml-ppx
+    lwt_ppx
+  ))
+  (modes js)
+)
