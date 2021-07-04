@@ -45,7 +45,7 @@ type current = {
   uvi: float;
   clouds: int;
   wind_speed: float;
-  wind_gust: float;
+  wind_gust: float option; [@default None]
   weather: overview list;
 }
 [@@deriving sexp, equal, of_yojson { strict = false }]
@@ -59,7 +59,7 @@ type hourly = {
   uvi: float;
   clouds: int;
   wind_speed: float;
-  wind_gust: float;
+  wind_gust: float option; [@default None]
   weather: overview list;
   pop: float;
 }
