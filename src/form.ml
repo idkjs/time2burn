@@ -148,7 +148,7 @@ let component =
         [
           make_section "1. Your sensitivity to UV" [ skin_type_node ];
           make_section "2. Sunscreen" [ spf_node ];
-          make_section "3. Your location" [ geo_node ];
+          make_section "3. Location" [ geo_node ];
           chart;
         ]
 

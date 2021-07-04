@@ -91,7 +91,7 @@ let component =
           let handler _evt = inject Action.Fetching_geo in
           Node.div
             Attr.[ classes [ "btn"; "btn-primary" ]; on_click handler ]
-            [ Node.text "Detect my location" ]
+            [ Node.text "Use my location" ]
         | Fetching_geo, _ ->
           Node.div []
             [
