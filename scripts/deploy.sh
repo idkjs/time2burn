@@ -47,4 +47,4 @@ docker push "$IMAGE"
 
 ### Deploy
 
-# gcloud run deploy time2burn --platform=managed --image="$IMAGE"
+gcloud run deploy time2burn --platform=managed --image="$IMAGE"

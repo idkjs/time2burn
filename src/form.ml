@@ -92,10 +92,10 @@ let best_fit_how_long_rev data =
       going_outside, points
     | num_slices :: rest ->
       let going_outside, num_points, points = how_long_rev ~num_slices data in
-      if num_points > 10 then going_outside, points else loop rest
+      if num_points <= 10 then going_outside, points else loop rest
     | [] -> failwith "Impossible case, there should always be hourly values"
   in
-  loop [ 2; 4; 6; 12 ]
+  loop [ 30; 12; 6; 4 ]
 
 let component =
   let%sub subforms = subforms in
