@@ -72,17 +72,17 @@ let pct_color pct (r1, g1, b1) (r2, g2, b2) =
   let b = color (100.0 - pct) b1 + color pct b2 in
   sprintf "#%02x%02x%02x" (to_int r) (to_int g) (to_int b)
 
-let load ~labels ~data ~width ~height canvas =
+let load ~labels ~data ~width ~height:_ canvas =
   let canvas = Js.Unsafe.coerce canvas in
   let ctx = canvas##getContext "2d" in
   let constructor = window##._Chart in
   let backgroud_gradient =
     let gradient = ctx##createLinearGradient 0 0 width 0 in
     let () = gradient##addColorStop 0 "#FFF75D" in
-    let () = gradient##addColorStop 0.2 "#FFC11F" in
-    let () = gradient##addColorStop 0.4 "#FE650D" in
-    let () = gradient##addColorStop 0.6 "#F33C04" in
-    let () = gradient##addColorStop 0.8 "#DA1F05" in
+    let () = gradient##addColorStop 0.6 "#FFC11F" in
+    let () = gradient##addColorStop 0.7 "#FE650D" in
+    let () = gradient##addColorStop 0.8 "#F33C04" in
+    let () = gradient##addColorStop 0.9 "#DA1F05" in
     let () = gradient##addColorStop 1 "#A10100" in
     gradient
   in
@@ -110,7 +110,7 @@ let load ~labels ~data ~width ~height canvas =
           responsive = false;
           plugins =
             {
-              title = { display = true; text = Some "Time to sunburn" };
+              title = { display = true; text = Some "Sunburn-meter" };
               legend = { display = false; text = None };
             };
           interaction = { intersect = false; mode = "index" };

@@ -58,17 +58,23 @@ let component =
                 print_endline (sprintf "Could not store to local storage '%s'. Error: '%s'" s err));
          Sexp.of_string_conv_exn s [%of_sexp: Levels.t option] |> update
        in
+       let icon =
+         if Option.is_some state
+         then Icon.svg Check_lg ~container:Span Attr.[ class_ "text-success" ]
+         else Icon.svg X ~container:Span Attr.[ class_ "text-danger" ]
+       in
        Node.div []
          [
            Node.select
              Attr.
                [
-                 class_ "form-select";
+                 classes [ "form-select"; "d-inline"; "me-2" ];
                  style Css_gen.(width (`Em 20));
                  create "aria-label" "Levels skin scale";
                  on_change handler;
                ]
              options;
+           icon;
          ]
      in
      state, node

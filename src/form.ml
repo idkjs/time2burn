@@ -130,8 +130,9 @@ let component =
                   Attr.[ classes [ "alert"; "alert-warning" ] ]
                   [
                     Node.textf
-                      !"If you go outside at %{Weather.DT}, you will have a sunburn around %{Weather.DT}"
-                      start burn;
+                      !"If you go outside at %{Weather.DT}, you will have a sunburn at around "
+                      start;
+                    Node.span Attr.[ class_ "fw-bold" ] [ Node.textf !"%{Weather.DT}" burn ];
                   ]
               | _ -> Node.none
             in
@@ -145,9 +146,9 @@ let component =
       in
       Node.div []
         [
-          make_section "Your sensitivity to UV" [ skin_type_node ];
-          make_section "Sunscreen" [ spf_node ];
-          make_section "Your location" [ geo_node ];
+          make_section "1. Your sensitivity to UV" [ skin_type_node ];
+          make_section "2. Sunscreen" [ spf_node ];
+          make_section "3. Your location" [ geo_node ];
           chart;
         ]
 

@@ -27,8 +27,6 @@ let get_location () =
   in
   p
 
-let get_location2 () = Lwt_result.return Position.{ latitude = 0.0; longitude = 0.0 }
-
 let component =
   let module Component = struct
     module Input = Unit
@@ -100,7 +98,6 @@ let component =
               Node.div
                 Attr.[ classes [ "spinner-border"; "text-info" ]; create "role" "status" ]
                 [ Node.span Attr.[ class_ "visually-hidden" ] [ Node.text "Loading..." ] ];
-              Node.text "Detecting your location...";
             ]
         | Fetching_weather, _ ->
           Node.div []
@@ -108,9 +105,8 @@ let component =
               Node.div
                 Attr.[ classes [ "spinner-border"; "text-success" ]; create "role" "status" ]
                 [ Node.span Attr.[ class_ "visually-hidden" ] [ Node.text "Loading..." ] ];
-              Node.text "Retrieving weather data...";
             ]
-        | Completed, _ -> Node.div [] [ Icon.svg Check_lg ~container:Span [] ]
+        | Completed, _ -> Node.div [] [ Icon.svg Check_lg ~container:Span Attr.[ class_ "text-success" ] ]
       in
       let data =
         match model.weather with
