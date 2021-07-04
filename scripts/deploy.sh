@@ -39,7 +39,7 @@ gcloud config set run/region us-central1
 
 ### Build and upload
 
-URL="us.gcr.io/$GCLOUD_PROJECT/botwr"
+URL="us.gcr.io/$GCLOUD_PROJECT/time2burn"
 SHA="$(git rev-list -1 HEAD -- .)"
 IMAGE="$URL:$SHA"
 docker build . -t "$IMAGE"
@@ -47,4 +47,4 @@ docker push "$IMAGE"
 
 ### Deploy
 
-gcloud run deploy botwr --platform=managed --image="$IMAGE"
+# gcloud run deploy time2burn --platform=managed --image="$IMAGE"
