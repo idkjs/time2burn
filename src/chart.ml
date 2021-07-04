@@ -127,7 +127,7 @@ let load ~labels ~data ~width ~height:_ canvas =
   ()
 
 let render ~labels ~data ~key =
-  let width = max 650 ((window##.screen##.availWidth : int) / 2) in
+  let width = 650 in
   let height = width / 2 in
   Js_of_ocaml_lwt.Lwt_js_events.async (fun () ->
       Dom_html.getElementById_opt id_ |> Option.iter ~f:(load ~labels ~data ~width ~height);
