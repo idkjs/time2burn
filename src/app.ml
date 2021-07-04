@@ -11,7 +11,7 @@ let application =
   let%sub form = Form.component in
   return
   @@ let%map form = form in
-     Node.div Attr.[ classes [ "container-fluid" ] ] [ Node.h3 [] [ Node.text "Time to burn" ]; form ]
+     Node.div Attr.[ classes [ "container-fluid" ] ] [ Node.h3 [] [ Node.text "Time to Sunburn" ]; form ]
 
 let generate_and_save_graph computation =
   let regex = Re.Perl.re ~opts:[ `Caseless ] "with-model-resetter_[0-9]*" |> Re.compile in
