@@ -11,6 +11,7 @@ module Levels = struct
     | SPF_15
     | SPF_30
     | SPF_50
+    | SPF_60
     | SPF_80
     | SPF_100
   [@@deriving sexp, equal, enumerate]
@@ -20,6 +21,7 @@ module Levels = struct
   | SPF_15 -> "SPF 15"
   | SPF_30 -> "SPF 30"
   | SPF_50 -> "SPF 50"
+  | SPF_60 -> "SPF 60"
   | SPF_80 -> "SPF 80"
   | SPF_100 -> "SPF 100"
 
@@ -28,6 +30,7 @@ module Levels = struct
   | SPF_15 -> 15.0
   | SPF_30 -> 30.0
   | SPF_50 -> 50.0
+  | SPF_60 -> 60.0
   | SPF_80 -> 80.0
   | SPF_100 -> 100.0
 end

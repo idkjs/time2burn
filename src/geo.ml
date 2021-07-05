@@ -4,6 +4,9 @@ open! Bonsai.Let_syntax
 open! Vdom
 open! Bootstrap
 open! Bootstrap.Basic
+open Cohttp
+open Cohttp_lwt_xhr
+module Body = Cohttp_lwt.Body
 open Lwt.Syntax
 
 module Position = struct
@@ -15,7 +18,7 @@ module Position = struct
 end
 
 let get_location () =
-  let p, w = Lwt.wait () in
+  let p, w = Lwt.task () in
   let () =
     window##.navigator##.geolocation##getCurrentPosition (fun position ->
         Or_error.try_with ~backtrace:true (fun () ->
@@ -27,14 +30,67 @@ let get_location () =
   in
   p
 
+module Mapbox = struct
+  let api_key =
+    "pk.eyJ1Ijoic2dyb25kaW4iLCJhIjoiY2txcW9manJwMTN2bjJ2cDU4dW5yN3Y2MCJ9.iE43zZJTBcKqdSMo__va1g"
+
+  let base_uri = Uri.of_string "https://api.mapbox.com"
+
+  type feature = {
+    place_name: string;
+    center: float * float;
+  }
+  [@@deriving sexp, equal, of_yojson { strict = false }]
+
+  type feature_collection = { features: feature list }
+  [@@deriving sexp, equal, of_yojson { strict = false }] [@@unboxed]
+
+  let parse json =
+    let open Result.Monad_infix in
+    [%of_yojson: feature_collection] json
+    >>= (fun { features } -> List.hd features |> Result.of_option ~error:"No results found")
+    |> Result.map_error ~f:Error.of_string
+end
+
+let geocoding query =
+  Lwt.catch
+    (fun () ->
+      let uri =
+        Uri.pct_encode query
+        |> sprintf "/geocoding/v5/mapbox.places/%s.json"
+        |> Uri.with_path Mapbox.base_uri
+        |> Fn.flip Uri.with_query'
+             [
+               "autocomplete", "true";
+               "fuzzyMatch", "true";
+               "language", "en";
+               "limit", "1";
+               "routing", "false";
+               "types", "district,place,locality,neighborhood,address,poi";
+               "worldview", "us";
+               "access_token", Mapbox.api_key;
+             ]
+      in
+      let* res, body = Client.get uri in
+      let+ raw = Body.to_string body in
+      match Response.status res |> Code.code_of_status with
+      | 200 -> Yojson.Safe.from_string raw |> Mapbox.parse
+      | code ->
+        print_endline raw;
+        failwithf "Could not get address data. Error %d" code ())
+    (fun exn -> Or_error.of_exn exn |> Lwt.return)
+
 let component =
   let module Component = struct
     module Input = Unit
 
     module Model = struct
       type status =
-        | Blank
+        | Blank_geo
+        | Blank_search      of string
         | Fetching_geo
+        | Fetching_search
+        | Confirming_search of Mapbox.feature * string
         | Fetching_weather
         | Completed
       [@@deriving sexp, equal]
@@ -48,10 +104,14 @@ let component =
 
     module Action = struct
       type t =
+        | Blank_geo
+        | Blank_search      of string
         | Fetching_geo
-        | Fetching_weather of Position.t
-        | Fetched_weather  of Weather.t
-        | Errored          of Error.t
+        | Fetching_search   of string
+        | Confirming_search of Mapbox.feature * string
+        | Fetching_weather  of Position.t
+        | Fetched_weather   of Weather.t
+        | Errored           of Error.t
       [@@deriving sexp_of]
     end
 
@@ -59,15 +119,36 @@ let component =
 
     let apply_action ~inject ~schedule_event (() : Input.t) (_prev : Model.t) : Action.t -> Model.t =
       function
+    | Blank_geo -> { weather = Ok None; status = Blank_geo }
+    | Blank_search text -> { weather = Ok None; status = Blank_search text }
     | Fetching_geo ->
       Js_of_ocaml_lwt.Lwt_js_events.async (fun () ->
-          let+ result = get_location () in
+          let p_location = get_location () in
+          let p_timeout =
+            Js_of_ocaml_lwt.Lwt_js.sleep 7.0
+            |> Lwt.map (fun () ->
+                   Or_error.error_string
+                     "Location timed out. Make sure you've enabled Location Services on your device, \
+                      then try again.")
+          in
+          let+ result = Lwt.pick [ p_location; p_timeout ] in
           (match result with
           | Ok position -> Action.Fetching_weather position
           | Error err -> Action.Errored err)
           |> inject
           |> schedule_event);
       { weather = Ok None; status = Fetching_geo }
+    | Fetching_search query ->
+      Js_of_ocaml_lwt.Lwt_js_events.async (fun () ->
+          let+ result = geocoding query in
+          (match result with
+          | Ok feature -> Action.Confirming_search (feature, query)
+          | Error err -> Action.Errored err)
+          |> inject
+          |> schedule_event);
+      { weather = Ok None; status = Fetching_search }
+    | Confirming_search (feature, query) ->
+      { weather = Ok None; status = Confirming_search (feature, query) }
     | Fetching_weather { longitude; latitude } ->
       Js_of_ocaml_lwt.Lwt_js_events.async (fun () ->
           let+ result = Weather.get_weather ~longitude ~latitude in
@@ -78,35 +159,106 @@ let component =
           |> schedule_event);
       { weather = Ok None; status = Fetching_weather }
     | Fetched_weather weather -> { weather = Ok (Some weather); status = Completed }
-    | Errored err -> { weather = Error err; status = Blank }
+    | Errored err -> { weather = Error err; status = Blank_geo }
 
     let compute ~inject (() : Input.t) (model : Model.t) =
-      let node =
-        match model.status, model.weather with
-        | _, Error err ->
-          Node.div
-            Attr.[ classes [ "alert"; "alert-danger" ] ]
-            [ Node.textf !"%{Error.to_string_hum}" err ]
-        | Blank, _ ->
-          let handler _evt = inject Action.Fetching_geo in
-          Node.div
-            Attr.[ classes [ "btn"; "btn-primary" ]; on_click handler ]
-            [ Node.text "Use my location" ]
-        | Fetching_geo, _ ->
+      let status_node =
+        match model.status with
+        | Blank_geo ->
+          let handler_toggle _evt = inject (Action.Blank_search "") in
+          let handler_geo _evt = inject Action.Fetching_geo in
+          Node.div []
+            [
+              Node.button
+                Attr.[ classes [ "btn"; "btn-primary" ]; on_click handler_geo ]
+                [ Node.text "Use my location" ];
+              Node.div
+                Attr.[ classes [ "link-info"; "mt-1" ]; on_click handler_toggle; style pointer ]
+                [ Node.text "Enter address manually" ];
+            ]
+        | Blank_search text ->
+          let input_id = "search-box" in
+          let handler_toggle _evt = inject Action.Blank_geo in
+          let handler_search _evt =
+            let open Js_of_ocaml in
+            Dom_html.getElementById_opt input_id
+            |> Option.value_map ~default:Event.Ignore ~f:(fun el ->
+                   let query = (Js.Unsafe.coerce el)##.value |> Js.to_string |> String.strip in
+                   if String.is_empty query then Event.Ignore else inject (Action.Fetching_search query))
+          in
+          let handler_keydown evt =
+            let open Js_of_ocaml in
+            match Js.Optdef.case evt##.key (const None) (fun jss -> Some (Js.to_string jss)) with
+            | Some "Enter" -> handler_search evt
+            | _ -> Event.Ignore
+          in
+          Node.div []
+            [
+              Node.input
+                Attr.
+                  [
+                    type_ "text";
+                    id input_id;
+                    class_ "form-control";
+                    style Css_gen.(width (`Em 20));
+                    value text;
+                    on_keydown handler_keydown;
+                  ]
+                [];
+              Node.div
+                Attr.[ class_ "mt-2" ]
+                [
+                  Node.button
+                    Attr.[ classes [ "btn"; "btn-primary"; "me-2" ]; on_click handler_search ]
+                    [ Node.text "Search" ];
+                  Node.button
+                    Attr.[ classes [ "btn"; "btn-secondary" ]; on_click handler_toggle ]
+                    [ Node.text "Cancel" ];
+                ];
+            ]
+        | Confirming_search ({ place_name; center = longitude, latitude }, query) ->
+          let handler_geo _evt = inject Action.Fetching_geo in
+          let handler_yes _evt = inject (Action.Fetching_weather { longitude; latitude }) in
+          let handler_no _evt = inject (Action.Blank_search query) in
+          Node.div []
+            [
+              Node.div [] [ Node.text "Is this correct?" ];
+              Node.div Attr.[ class_ "fw-bold" ] [ Node.text place_name ];
+              Node.button
+                Attr.[ classes [ "btn"; "btn-primary"; "me-2" ]; on_click handler_yes ]
+                [ Node.text "Yes" ];
+              Node.button
+                Attr.[ classes [ "btn"; "btn-secondary" ]; on_click handler_no ]
+                [ Node.text "No" ];
+              Node.div
+                Attr.[ classes [ "link-info"; "mt-1" ]; on_click handler_geo; style pointer ]
+                [ Node.text "Use my location instead" ];
+            ]
+        | Fetching_geo
+         |Fetching_search ->
           Node.div []
             [
               Node.div
                 Attr.[ classes [ "spinner-border"; "text-info" ]; create "role" "status" ]
                 [ Node.span Attr.[ class_ "visually-hidden" ] [ Node.text "Loading..." ] ];
             ]
-        | Fetching_weather, _ ->
+        | Fetching_weather ->
+          Node.div
+            Attr.[ classes [ "spinner-border"; "text-success" ]; create "role" "status" ]
+            [ Node.span Attr.[ class_ "visually-hidden" ] [ Node.text "Loading..." ] ]
+        | Completed -> Node.div [] [ Icon.svg Check_lg ~container:Span Attr.[ class_ "text-success" ] ]
+      in
+      let node =
+        match model.weather with
+        | Error err ->
           Node.div []
             [
               Node.div
-                Attr.[ classes [ "spinner-border"; "text-success" ]; create "role" "status" ]
-                [ Node.span Attr.[ class_ "visually-hidden" ] [ Node.text "Loading..." ] ];
+                Attr.[ classes [ "alert"; "alert-danger" ] ]
+                [ Node.textf !"%{Error.to_string_hum}" err ];
+              status_node;
             ]
-        | Completed, _ -> Node.div [] [ Icon.svg Check_lg ~container:Span Attr.[ class_ "text-success" ] ]
+        | Ok _ -> Node.div [] [ Node.div [] []; status_node ]
       in
       let data =
         match model.weather with
@@ -121,4 +273,4 @@ let component =
       type t = Weather.t option * Node.t
     end
   end in
-  Bonsai.of_module0 (module Component) ~default_model:{ weather = Ok None; status = Blank }
+  Bonsai.of_module0 (module Component) ~default_model:{ weather = Ok None; status = Blank_geo }
