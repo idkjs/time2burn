@@ -19,15 +19,36 @@ end
 
 let get_location () =
   let p, w = Lwt.task () in
-  let () =
-    window##.navigator##.geolocation##getCurrentPosition (fun position ->
-        Or_error.try_with ~backtrace:true (fun () ->
-            let () = window##.console##log position in
-            let latitude = position##.coords##.latitude in
-            let longitude = position##.coords##.longitude in
-            Position.{ latitude; longitude })
-        |> Lwt.wakeup_later w)
+  let on_success position =
+    Or_error.try_with ~backtrace:true (fun () ->
+        let () = window##.console##log position in
+        let latitude = position##.coords##.latitude in
+        let longitude = position##.coords##.longitude in
+        Position.{ latitude; longitude })
+    |> Lwt.wakeup_later w
   in
+  let on_error err =
+    (match err##.code with
+    | 1 -> "Please enable Location Services on your device and try again."
+    | 2 ->
+      "Your device failed to discover your location. Please try again or manually enter your address."
+    | 3 ->
+      "Your device could not determine your position in a reasonable time. Please try again or manually \
+       enter your address."
+    | _ ->
+      "Your device failed to discover your location due to an unknown error. Please try again or \
+       manually enter your address.")
+    |> Or_error.error_string
+    |> Lwt.wakeup_later w
+  in
+  let options =
+    object%js
+      val maximumAge = Time.Span.of_min 10.0 |> Time.Span.to_ms |> Float.to_int
+
+      val timeout = Time.Span.of_sec 10.0 |> Time.Span.to_ms |> Float.to_int
+    end
+  in
+  let () = window##.navigator##.geolocation##getCurrentPosition on_success on_error options in
   p
 
 module Mapbox = struct
@@ -134,15 +155,7 @@ let component =
     | Blank_search text -> { weather = Ok None; status = Blank_search text }
     | Fetching_geo ->
       Js_of_ocaml_lwt.Lwt_js_events.async (fun () ->
-          let p_location = get_location () in
-          let p_timeout =
-            Js_of_ocaml_lwt.Lwt_js.sleep 8.0
-            |> Lwt.map (fun () ->
-                   Or_error.error_string
-                     "Location timed out. Make sure you've enabled Location Services on your device, \
-                      then try again.")
-          in
-          let+ result = Lwt.pick [ p_location; p_timeout ] in
+          let+ result = get_location () in
           (match result with
           | Ok position -> Action.Fetching_weather position
           | Error err -> Action.Errored err)

@@ -60,14 +60,6 @@ type config = {
 }
 [@@deriving to_yojson]
 
-let pct_color pct (r1, g1, b1) (r2, g2, b2) =
-  let open Float in
-  let color pct x = x * pct * 256.0 / 100.0 in
-  let r = color (100.0 - pct) r1 + color pct r2 in
-  let g = color (100.0 - pct) g1 + color pct g2 in
-  let b = color (100.0 - pct) b1 + color pct b2 in
-  sprintf "#%02x%02x%02x" (to_int r) (to_int g) (to_int b)
-
 let load ~labels ~data ~width:_ ~height canvas =
   let canvas = Js.Unsafe.coerce canvas in
   let ctx = canvas##getContext "2d" in
