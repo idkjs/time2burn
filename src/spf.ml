@@ -72,7 +72,7 @@ let component =
              Attr.
                [
                  classes [ "form-select"; "d-inline"; "me-2" ];
-                 style Css_gen.(width (`Em 20));
+                 style Css_gen.(max_width (`Em 20));
                  create "aria-label" "Levels skin scale";
                  on_change handler;
                ]

@@ -32,11 +32,7 @@ module Options = struct
   }
   [@@deriving to_yojson]
 
-  type plugins = {
-    title: title;
-    legend: title;
-  }
-  [@@deriving to_yojson]
+  type plugins = { legend: title } [@@deriving to_yojson] [@@unboxed]
 
   type interaction = {
     intersect: bool;
@@ -72,17 +68,18 @@ let pct_color pct (r1, g1, b1) (r2, g2, b2) =
   let b = color (100.0 - pct) b1 + color pct b2 in
   sprintf "#%02x%02x%02x" (to_int r) (to_int g) (to_int b)
 
-let load ~labels ~data ~width ~height:_ canvas =
+let load ~labels ~data ~width:_ ~height canvas =
   let canvas = Js.Unsafe.coerce canvas in
   let ctx = canvas##getContext "2d" in
   let constructor = window##._Chart in
   let backgroud_gradient =
-    let gradient = ctx##createLinearGradient 0 0 width 0 in
-    let () = gradient##addColorStop 0 "#FFF75D" in
-    let () = gradient##addColorStop 0.6 "#FFC11F" in
-    let () = gradient##addColorStop 0.7 "#FE650D" in
-    let () = gradient##addColorStop 0.8 "#F33C04" in
-    let () = gradient##addColorStop 0.9 "#DA1F05" in
+    let gradient = ctx##createLinearGradient 0 height 0 0 in
+    let () = gradient##addColorStop 0 "#FFFFFF" in
+    let () = gradient##addColorStop 0.6 "#FFF75D" in
+    let () = gradient##addColorStop 0.80 "#FFC11F" in
+    let () = gradient##addColorStop 0.85 "#FE650D" in
+    let () = gradient##addColorStop 0.90 "#F33C04" in
+    let () = gradient##addColorStop 0.95 "#DA1F05" in
     let () = gradient##addColorStop 1 "#A10100" in
     gradient
   in
@@ -108,11 +105,7 @@ let load ~labels ~data ~width ~height:_ canvas =
       options =
         {
           responsive = false;
-          plugins =
-            {
-              title = { display = true; text = Some "Sunburn-meter" };
-              legend = { display = false; text = None };
-            };
+          plugins = { legend = { display = false; text = None } };
           interaction = { intersect = false; mode = "index" };
           scales = { y = { max = 100 } };
         };
@@ -127,7 +120,12 @@ let load ~labels ~data ~width ~height:_ canvas =
   ()
 
 let render ~labels ~data ~key =
-  let width = 650 in
+  let width =
+    window##.outerWidth
+    |> Js.Optdef.return
+    |> Js.Optdef.to_option
+    |> Option.value_map ~default:650 ~f:(fun x -> min 650 (Float.to_int x - 20))
+  in
   let height = width / 2 in
   Js_of_ocaml_lwt.Lwt_js_events.async (fun () ->
       Dom_html.getElementById_opt id_ |> Option.iter ~f:(load ~labels ~data ~width ~height);

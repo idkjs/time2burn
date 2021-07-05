@@ -92,7 +92,7 @@ let best_fit_how_long_rev data =
       going_outside, points
     | num_slices :: rest ->
       let going_outside, num_points, points = how_long_rev ~num_slices data in
-      if num_points <= 10 then going_outside, points else loop rest
+      if num_points <= 26 then going_outside, points else loop rest
     | [] -> failwith "Impossible case, there should always be hourly values"
   in
   loop [ 30; 12; 6; 4 ]
@@ -124,10 +124,12 @@ let component =
             let ttb =
               match going_outside, points with
               | Some _, { total_at_start; _ } :: _ when Float.( < ) total_at_start 100.0 ->
-                Node.div Attr.[ classes [ "alert"; "alert-success" ] ] [ Node.text "You should be fine!" ]
+                Node.div
+                  Attr.[ classes [ "alert"; "alert-success" ]; style Css_gen.(max_width (`Px 650)) ]
+                  [ Node.text "You should be fine!" ]
               | Some start, _ :: { slice = { dt = burn; _ }; _ } :: _ ->
                 Node.div
-                  Attr.[ classes [ "alert"; "alert-warning" ] ]
+                  Attr.[ classes [ "alert"; "alert-warning" ]; style Css_gen.(max_width (`Px 650)) ]
                   [
                     Node.textf
                       !"If you go outside at %{Weather.DT}, you will have a sunburn at around "
@@ -140,9 +142,7 @@ let component =
               List.fold points ~init:([], []) ~f:(fun (labels, pct) computed ->
                   Weather.DT.to_string computed.slice.dt :: labels, computed.total_at_start :: pct)
             in
-            Node.div
-              Attr.[ classes [ "d-inline-flex"; "flex-column" ] ]
-              [ ttb; Chart.render ~labels ~data ~key:(sprintf !"%{sexp: data}" subform_data) ])
+            Node.div [] [ ttb; Chart.render ~labels ~data ~key:(sprintf !"%{sexp: data}" subform_data) ])
       in
       Node.div []
         [

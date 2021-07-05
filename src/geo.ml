@@ -42,13 +42,17 @@ module Mapbox = struct
   }
   [@@deriving sexp, equal, of_yojson { strict = false }]
 
-  type feature_collection = { features: feature list }
-  [@@deriving sexp, equal, of_yojson { strict = false }] [@@unboxed]
+  type feature_collection = {
+    features: feature list;
+    attribution: string option; [@default None]
+  }
+  [@@deriving sexp, equal, of_yojson { strict = false }]
 
   let parse json =
     let open Result.Monad_infix in
     [%of_yojson: feature_collection] json
-    >>= (fun { features } -> List.hd features |> Result.of_option ~error:"No results found")
+    >>= (fun { features; attribution } ->
+          List.hd features |> Result.of_option ~error:"No results found" >>| fun x -> x, attribution)
     |> Result.map_error ~f:Error.of_string
 end
 
@@ -84,13 +88,20 @@ let component =
   let module Component = struct
     module Input = Unit
 
+    type confirm_search = {
+      feature: Mapbox.feature;
+      attribution: string option;
+      query: string;
+    }
+    [@@deriving sexp, equal]
+
     module Model = struct
       type status =
         | Blank_geo
         | Blank_search      of string
         | Fetching_geo
         | Fetching_search
-        | Confirming_search of Mapbox.feature * string
+        | Confirming_search of confirm_search
         | Fetching_weather
         | Completed
       [@@deriving sexp, equal]
@@ -108,7 +119,7 @@ let component =
         | Blank_search      of string
         | Fetching_geo
         | Fetching_search   of string
-        | Confirming_search of Mapbox.feature * string
+        | Confirming_search of confirm_search
         | Fetching_weather  of Position.t
         | Fetched_weather   of Weather.t
         | Errored           of Error.t
@@ -125,7 +136,7 @@ let component =
       Js_of_ocaml_lwt.Lwt_js_events.async (fun () ->
           let p_location = get_location () in
           let p_timeout =
-            Js_of_ocaml_lwt.Lwt_js.sleep 7.0
+            Js_of_ocaml_lwt.Lwt_js.sleep 8.0
             |> Lwt.map (fun () ->
                    Or_error.error_string
                      "Location timed out. Make sure you've enabled Location Services on your device, \
@@ -142,13 +153,12 @@ let component =
       Js_of_ocaml_lwt.Lwt_js_events.async (fun () ->
           let+ result = geocoding query in
           (match result with
-          | Ok feature -> Action.Confirming_search (feature, query)
+          | Ok (feature, attribution) -> Action.Confirming_search { feature; attribution; query }
           | Error err -> Action.Errored err)
           |> inject
           |> schedule_event);
       { weather = Ok None; status = Fetching_search }
-    | Confirming_search (feature, query) ->
-      { weather = Ok None; status = Confirming_search (feature, query) }
+    | Confirming_search x -> { weather = Ok None; status = Confirming_search x }
     | Fetching_weather { longitude; latitude } ->
       Js_of_ocaml_lwt.Lwt_js_events.async (fun () ->
           let+ result = Weather.get_weather ~longitude ~latitude in
@@ -163,6 +173,32 @@ let component =
 
     let compute ~inject (() : Input.t) (model : Model.t) =
       let status_node =
+        let make_attribution attribution =
+          let line =
+            Node.div
+              Attr.[ classes [ "small"; "d-flex"; "align-items-center" ] ]
+              [
+                Node.text "Address search powered by ";
+                Node.create "object"
+                  Attr.
+                    [
+                      create "data" "/mapbox.svg";
+                      type_ "image/svg+xml";
+                      class_ "ms-1";
+                      style Css_gen.(width (`Em 5));
+                    ]
+                  [];
+              ]
+          in
+          Option.value_map attribution ~default:line ~f:(fun att ->
+              Node.div
+                Attr.[ class_ "mt-3" ]
+                [
+                  line;
+                  Node.div Attr.[ class_ "small"; style Css_gen.(max_width (`Em 20)) ] [ Node.text att ];
+                ])
+        in
+
         match model.status with
         | Blank_geo ->
           let handler_toggle _evt = inject (Action.Blank_search "") in
@@ -200,11 +236,12 @@ let component =
                     type_ "text";
                     id input_id;
                     class_ "form-control";
-                    style Css_gen.(width (`Em 20));
+                    style Css_gen.(max_width (`Em 20));
                     value text;
                     on_keydown handler_keydown;
                   ]
                 [];
+              make_attribution None;
               Node.div
                 Attr.[ class_ "mt-2" ]
                 [
@@ -216,7 +253,8 @@ let component =
                     [ Node.text "Cancel" ];
                 ];
             ]
-        | Confirming_search ({ place_name; center = longitude, latitude }, query) ->
+        | Confirming_search { feature = { place_name; center = longitude, latitude }; attribution; query }
+          ->
           let handler_geo _evt = inject Action.Fetching_geo in
           let handler_yes _evt = inject (Action.Fetching_weather { longitude; latitude }) in
           let handler_no _evt = inject (Action.Blank_search query) in
@@ -233,6 +271,7 @@ let component =
               Node.div
                 Attr.[ classes [ "link-info"; "mt-1" ]; on_click handler_geo; style pointer ]
                 [ Node.text "Use my location instead" ];
+              make_attribution attribution;
             ]
         | Fetching_geo
          |Fetching_search ->
@@ -246,7 +285,15 @@ let component =
           Node.div
             Attr.[ classes [ "spinner-border"; "text-success" ]; create "role" "status" ]
             [ Node.span Attr.[ class_ "visually-hidden" ] [ Node.text "Loading..." ] ]
-        | Completed -> Node.div [] [ Icon.svg Check_lg ~container:Span Attr.[ class_ "text-success" ] ]
+        | Completed ->
+          let handler _evt = inject Action.Blank_geo in
+          Node.div []
+            [
+              Icon.svg Check_lg ~container:Span Attr.[ class_ "text-success" ];
+              Node.button
+                Attr.[ classes [ "btn"; "btn-light"; "shadow-sm"; "p-1"; "ms-2" ]; on_click handler ]
+                [ Icon.svg Pencil_square [] ];
+            ]
       in
       let node =
         match model.weather with
@@ -254,7 +301,7 @@ let component =
           Node.div []
             [
               Node.div
-                Attr.[ classes [ "alert"; "alert-danger" ] ]
+                Attr.[ classes [ "alert"; "alert-danger" ]; style Css_gen.(max_width (`Em 40)) ]
                 [ Node.textf !"%{Error.to_string_hum}" err ];
               status_node;
             ]
