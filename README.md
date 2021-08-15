@@ -5,7 +5,7 @@ Everything runs browser-side, there is no backend, just flat files to serve over
 ### Local development
 
 #### Setup
-
+- `brew install sassc`
 1. Install OPAM from your package manager
 2. In repo: `opam switch create . ocaml-variants.4.10.0+flambda --deps-only`
 
